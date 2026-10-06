@@ -178,8 +178,11 @@ var EXOS = {
   leg_curl:{name:'Leg curl',kind:'force'},
   mollets:{name:'Mollets debout',kind:'force'},
   stairmaster:{name:'Stairmaster',kind:'cardio'},
+  marche_inclinee:{name:'Marche inclinée',kind:'cardio',noLevel:true},
   crunch:{name:'Crunch abdos',kind:'bw'}
 };
+var EXTRAS = {cardio:['marche_inclinee']}; /* proposés dans « Ajouter un exercice » sans faire partie du bloc */
+function exosOf(t){return TYPES[t].exos.concat(EXTRAS[t]||[]);}
 var LS = 'gym_sessions_v1';
 
 var SB_URL='https://mzcigllddekrdqfpbixh.supabase.co';
@@ -249,6 +252,7 @@ function merge(remote){
 
 /* ---------- données ---------- */
 function hasData(e){
+  if(EXOS[e.id].noLevel)return Number(e.minutes)>0;
   if(EXOS[e.id].kind==='cardio')return !!(e.done||e.level);
   return e.sets.some(function(x){return x.reps||x.kg;});
 }
@@ -264,6 +268,7 @@ function lastFor(eid,type,date){
 }
 function blank(eid,type,date){
   var k=EXOS[eid].kind,l=lastFor(eid,type,date),last=l&&l.e;
+  if(EXOS[eid].noLevel)return {id:eid,minutes:last&&last.minutes?last.minutes:'',level:'',done:false};
   if(k==='cardio')return {id:eid,minutes:last&&last.minutes?last.minutes:30,level:last&&last.level?last.level:'',done:false};
   var sets=[];
   for(var i=0;i<3;i++){var p=last&&last.sets[i];sets.push({kg:p?p.kg:'',reps:p?p.reps:'',fail:false});}
@@ -291,13 +296,17 @@ function persist(now){
   session.updatedAt=new Date().toISOString();
   dirtySession=session;
   var k=history.findIndex(function(x){return x.id===session.id;});
-  if(k<0)history.unshift(session);else history[k]=session;
+  if(k<0)history.push(session);else history[k]=session;
+  sortHistory();
   dropTomb(session.id);
   writeLocal(session);
   addPend(session.id);
   setStatus('Enregistrement…');
   clearTimeout(saveTimer);
   saveTimer=setTimeout(flush,now?0:1200);
+}
+function sortHistory(){
+  history.sort(function(a,b){return b.date.localeCompare(a.date)||(b.updatedAt||'').localeCompare(a.updatedAt||'');});
 }
 function flushNow(){clearTimeout(saveTimer);if(dirtySession)flush();}
 async function flush(){
@@ -474,7 +483,7 @@ function progHTML(){
   return '<div class="top"><button class="back" data-act="home">Retour</button><h1>Progression</h1></div>'+
     Object.keys(TYPES).map(function(t){
       return '<section class="t-'+t+'" style="margin-bottom:18px"><h2>'+TYPES[t].label+'</h2>'+
-        TYPES[t].exos.map(function(eid){
+        exosOf(t).map(function(eid){
           var n=exoSessions(eid).length;
           return '<button class="row" data-act="exo" data-id="'+eid+'"><i></i><span class="g">'+esc(EXOS[eid].name)+'</span><small>'+n+' séance'+(n>1?'s':'')+'</small></button>';
         }).join('')+'</section>';
@@ -482,9 +491,9 @@ function progHTML(){
 }
 function exoHTML(){
   chartData={};
-  var X=EXOS[exoId],opts=METRICS[X.kind];
+  var X=EXOS[exoId],opts=X.noLevel?METRICS.cardio.slice(0,1):METRICS[X.kind];
   var cur=opts.find(function(o){return o[0]===exoMetric;})||opts[0];
-  var seg='<div class="seg">'+opts.map(function(o){
+  var seg=opts.length<2?'':'<div class="seg">'+opts.map(function(o){
     return '<button data-act="metric" data-m="'+o[0]+'" aria-pressed="'+(o[0]===cur[0])+'">'+o[1]+'</button>';
   }).join('')+'</div>';
   var m=exoPoints(exoId,cur[0]);
@@ -551,8 +560,11 @@ function cardHTML(i){
   var extra=TYPES[session.type].exos.indexOf(e.id)<0;
   var h='<article class="exo" data-card="'+i+'"><h3><button class="exname" data-act="exo" data-id="'+e.id+'">'+esc(X.name)+'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button></h3>';
   if(l)h+='<p class="last">Dernière fois ('+fmtDate(l.date)+') : '+esc(lastLine(l.e))+'</p>';
-  if(X.kind==='cardio'){
-    h+='<div class="cardio sethead"><span></span><span></span><small>Fait</small></div>'+
+  if(X.noLevel){
+    h+='<div class="cardio" style="grid-template-columns:1fr;margin-top:10px">'+
+      '<label class="fld"><input inputmode="numeric" data-f="minutes" data-i="'+i+'" value="'+esc(e.minutes)+'" placeholder="0" aria-label="Durée en minutes"'+dis()+'><span>min</span></label></div>';
+  }else if(X.kind==='cardio'){
+    h+='<div class="cardio sethead"<span></span><span></span><small>Fait</small></div>'+
       '<div class="cardio">'+
       '<label class="fld"><input inputmode="numeric" data-f="minutes" data-i="'+i+'" value="'+esc(e.minutes)+'" aria-label="Durée en minutes"'+dis()+'><span>min</span></label>'+
       '<label class="fld"><input inputmode="numeric" data-f="level" data-i="'+i+'" value="'+esc(e.level)+'" placeholder="niveau" aria-label="Niveau"'+dis()+'><span>niv.</span></label>'+
@@ -582,7 +594,7 @@ function addHTML(){
   if(!addOpen)return '<button class="addbtn" data-act="add-open">Ajouter un exercice</button>';
   var have=session.exercises.map(function(x){return x.id;}),any=false;
   var groups=Object.keys(TYPES).map(function(t){
-    var items=TYPES[t].exos.filter(function(eid){return have.indexOf(eid)<0;});
+    var items=exosOf(t).filter(function(eid){return have.indexOf(eid)<0;});
     if(!items.length)return '';
     any=true;
     return '<section class="t-'+t+'"><h3>'+TYPES[t].label+'</h3>'+items.map(function(eid){
