@@ -415,7 +415,7 @@ var WEEK_GOAL=3;
 function weekStart(){var d=new Date(),k=(d.getDay()+6)%7;d.setDate(d.getDate()-k);return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());}
 function weekHTML(){
   var ws=weekStart(),td=today();
-  var ss=history.filter(function(x){return x.type!=='cardio'&&x.date>=ws&&x.date<=td&&x.exercises.some(hasData);}).sort(function(a,b){return a.date.localeCompare(b.date);});
+  var ss=history.filter(function(x){return x.date>=ws&&x.date<=td&&x.exercises.some(hasData);}).sort(function(a,b){return a.date.localeCompare(b.date);});
   var n=ss.length,total=Math.max(WEEK_GOAL,n),dots='';
   for(var k=0;k<total;k++)dots+=k<n?'<i class="wd on t-'+ss[k].type+'"></i>':'<i class="wd"></i>';
   return '<button class="week" data-act="calendar" aria-label="'+n+' séance'+(n>1?'s':'')+' cette semaine sur '+WEEK_GOAL+'"><span class="wl"><small>Cette semaine</small><b>'+n+' / '+WEEK_GOAL+'</b></span><span class="wdots">'+dots+'</span></button>';
